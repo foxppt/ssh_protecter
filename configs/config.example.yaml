@@ -1,0 +1,23 @@
+# Positive whole-second durations. This file contains no TOTP secret.
+ssh:
+  ports: [22]
+  protect_ipv4: true
+  protect_ipv6: true
+  permanent_allow_ips: []
+authorization:
+  duration: 5m
+verification:
+  failure_window: 1h
+  max_failures: 5
+  ban_duration: 24h
+http:
+  mode: direct_tls
+  listen: ":443"
+  tls_cert_file: /etc/ssh-protecter/tls/fullchain.pem
+  tls_key_file: /etc/ssh-protecter/tls/privkey.pem
+  trusted_proxies: []
+storage:
+  path: /var/lib/ssh-protecter/state.db
+clock:
+  require_sync: true
+  max_skew: 2s

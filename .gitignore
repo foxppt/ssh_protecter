@@ -1,0 +1,7 @@
+/ssh-protecter
+/ssh-protecter.exe
+/dist/
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
