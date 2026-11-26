@@ -14,7 +14,7 @@
 
 ## 自动安装
 
-发布包为 `dist/ssh-protecter-0.1.0-rc2-linux-amd64.tar.gz`，旁边提供 `.sha256` 校验文件。解压后可执行 `sha256sum -c dist/SHA256SUMS` 检查包内文件。包含预编译程序和故障测试，无需目标机安装 Go。rc2 增加终端绑定二维码；二维码渲染内容通过独立解码器回读验证。
+发布包为 `dist/ssh-protecter-0.1.0-rc4-linux-amd64.tar.gz`，旁边提供 `.sha256` 校验文件。解压后可执行 `sha256sum -c dist/SHA256SUMS` 检查包内文件。包含预编译程序和故障测试，无需目标机安装 Go。rc2 增加终端绑定二维码；rc3 修正 Ubuntu 部署和早期保护启动顺序；rc4 增加在线撤销临时授权命令。
 
 解压发布包并进入包根目录。先选择直连或 Nginx 配置，按部署说明填写地址、证书和永久白名单。Nginx 配置仍由管理员检查后放入现有 Nginx，安装脚本不会覆盖其他站点。
 
@@ -23,7 +23,9 @@ bash scripts/install.sh --config configs/nginx.example.yaml --dry-run
 bash scripts/install.sh --config configs/nginx.example.yaml
 ```
 
-也可用 `--binary /绝对路径/ssh-protecter` 指定二进制。真实安装要求本地 root、运行中的 systemd、`/usr/sbin/nft`、`flock`、`systemd-analyze` 和 `restorecon`；不自动安装系统软件、不关闭 SELinux、不更改 Docker 后端或现有 firewalld 规则。
+也可用 `--binary /绝对路径/ssh-protecter` 指定二进制。真实安装要求本地 root、运行中的 systemd、`/usr/sbin/nft`、`flock` 和 `systemd-analyze`。开启 SELinux enforcing 的系统另外要求 `restorecon`，Ubuntu 未安装该工具时会跳过标签操作。不自动安装系统软件、不关闭 SELinux、不更改 Docker 后端或现有 firewalld 规则。
+
+安装工具自动识别 Rocky 的 `sshd.service/sshd.socket` 或 Ubuntu 的 `ssh.service/ssh.socket`，为实际存在的 socket 安装依赖。基础 guard 使用早期 oneshot（`DefaultDependencies=no`），在本地文件系统可用后、SSH socket 之前建立规则，避免与 `basic.target` 产生启动依赖环。
 
 安装步骤会检查配置和证书，保留已有配置、验证器和数据库。首次安装必须在交互终端输入有效 TOTP；在基础规则成功应用之前不安装 sshd 依赖。之后安装 unit、检查启动、启用开机自启动。安装或升级不重启 sshd；已有授权服务会先停止以释放独占防火墙锁。
 
@@ -45,6 +47,23 @@ bash scripts/uninstall.sh --remove-protection
 默认保留配置、验证器和数据库。需同时删除这些数据时增加 `--purge-data`；只删除固定已知文件，不递归删除用户目录。其他用户文件和其他防火墙表保留。被手工修改的托管文件会导致卸载在修改系统之前退出，需管理员先处理冲突。
 
 卸载顺序为：停止授权服务、禁用开机启动、移除 sshd 依赖、重载 systemd 依赖图，然后停止 guard，最后删除本项目表和文件。此顺序避免 guard 的 Requires 停止传播到 sshd，安装/卸载工具都不主动重启 SSH。
+
+## 手动撤销已放行的 IP
+
+在服务器本地以 root 执行，不需要停止授权服务：
+
+```sh
+ssh-protecter state-inspect
+ssh-protecter revoke --ip 203.0.113.10
+# IPv6 同样支持：
+ssh-protecter revoke --ip 2001:db8::10
+```
+
+将示例 IP 换成需要撤销的地址。命令经本地私有 Unix socket 交由运行服务处理，先删除该 IP 的持久化临时授权，再同步内核；成功返回后只禁止新建连接，已有 SSH 会话保留。巡检、重载或重启不会重新恢复被删除的临时授权。重复撤销不存在的临时授权是安全的。
+
+若内核同步失败，命令返回非零状态，已持久化的撤销不会回滚成放行；需检查服务健康及恢复结果，不能把报错当作成功。撤销不封禁网页，用户仍可通过一次新的有效验证申请授权。
+
+永久白名单地址会被命令明确拒绝。应先从 `/etc/ssh-protecter/config.yaml` 的 `ssh.permanent_allow_ips` 删除对应项，再执行 `ssh-protecter reload`，之后用 `revoke --ip 地址` 清理可能同时存在的临时授权。不要直接操作 nft 集合代替撤销，因为持久化记录会被巡检重新应用。
 
 ## 跨重启时钟保护
 
@@ -93,7 +112,7 @@ bash scripts/run-fault-tests.sh
 | 时钟异常 | 重启重开数据库、模拟墙上/单调时间分离 | 回拨及运行期前后跳被拒绝，故障跨进程保留 |
 | 安装/卸载 | 真实 shell 工具在暂存目录执行 | 幂等、dry-run、所有权校验、私密数据保留与显式清理 |
 
-这些测试已在 Windows 执行通用部分，并在本机 AlmaLinux 10.1 WSL 执行 Linux 的卡死恢复、实际 tmpfs ENOSPC、时钟/状态/重载故障及暂存安装测试。WSL 中缺少 nftables，未执行真实 nft 规则测试。它们不等价于完整 Rocky Linux 10 开机/网络验收。
+这些测试已在 Windows 执行通用部分，并在本机 AlmaLinux 10.1 WSL 执行 Linux 的卡死恢复、实际 tmpfs ENOSPC、时钟/状态/重载故障及暂存安装测试。之后在 Ubuntu 24.04.5 实机完成了真实 nftables、SSH、HTTPS、正式服务卡死恢复、安装卸载和整机重启测试，详见 [验收记录](acceptance-ubuntu-20261126.md)。Rocky Linux 10 的最终开机/网络验收仍需单独进行。
 
 ## 验证正式测试服务
 

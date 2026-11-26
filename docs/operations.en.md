@@ -14,7 +14,7 @@ Full-machine reboot, real SSH traffic, and final Rocky Linux 10 acceptance must 
 
 ## Automatic installation
 
-The current package is `dist/ssh-protecter-0.1.0-rc2-linux-amd64.tar.gz`, accompanied by a `.sha256` checksum file. After extracting it, run `sha256sum -c dist/SHA256SUMS` from the package root to verify packaged files. The package includes the executable and fault-test binaries; Go is not required on the target. rc2 adds terminal enrollment QR codes, whose rendered content is verified by decoding with an independent decoder.
+The current package is `dist/ssh-protecter-0.1.0-rc4-linux-amd64.tar.gz`, accompanied by a `.sha256` checksum file. After extracting it, run `sha256sum -c dist/SHA256SUMS` from the package root to verify packaged files. The package includes the executable and fault-test binaries; Go is not required on the target. rc2 adds terminal enrollment QR codes, whose rendered content is verified by decoding with an independent decoder.
 
 Extract the release and enter its root directory. Choose direct TLS or Nginx configuration, then edit addresses, certificates, and the permanent allowlist following [deployment](deployment.en.md). Administrators must check and install Nginx configuration themselves; the installer does not overwrite other sites.
 
@@ -123,3 +123,11 @@ The script verifies a changed boot ID, identical deadlines for unexpired grants/
 From another device, also verify unauthorized SSH rejection, access after authorization, established-session preservation after expiry, and coexistence with Docker/firewalld/SELinux. Source tests and time records cannot replace these network checks.
 
 References: [Linux adjtimex](https://man7.org/linux/man-pages/man2/adjtimex.2.html), [systemd watchdog](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html), [SQLite limits](https://www.sqlite.org/limits.html).
+
+## Ubuntu support and online revocation
+
+The installer detects Rocky's `sshd.service/sshd.socket` and Ubuntu's `ssh.service/ssh.socket`. It uses `restorecon` when available; SELinux enforcing systems require it. The baseline guard uses `DefaultDependencies=no` to load after local filesystems and before SSH listeners without an early-boot dependency cycle. The authorization service orders after `time-sync.target`.
+
+As local root, run `ssh-protecter revoke --ip 203.0.113.10` (replace the example address). The running service deletes the persisted temporary grant and reconciles its firewall rules through a private Unix socket. Established sessions remain connected. Repeating the command is safe, and reconciliation or restart cannot restore the deleted grant. A firewall failure returns an error without restoring the persisted grant; check service health before treating revocation as complete. The command does not ban browser authentication.
+
+Permanent allowlist entries must first be removed from `ssh.permanent_allow_ips` and applied with `ssh-protecter reload`; then revoke any remaining temporary grant. IPv6 is supported. The anonymized [Ubuntu acceptance record](acceptance-ubuntu-20261126.md) describes host tests and their limits.

@@ -2,9 +2,11 @@
 
 [简体中文](README.md) | [English](README.en.md)
 
-面向 Rocky Linux 10 的 Go SSH 访问守门程序，已接通终端 TOTP 绑定、网页验证、持久化授权和 nftables 应用。
+面向 Rocky Linux 10 / Ubuntu 24.04 的 Go SSH 访问守门程序，已接通终端 TOTP 绑定、网页验证、持久化授权和 nftables 应用。
 
 **当前为开发版本，最终 Rocky Linux 10 验收由使用者完成。** 已补充故障测试、跨重启时钟检查及自动安装/卸载。`config-check`、`state-inspect` 和 `firewall-plan` 不修改防火墙；Linux root 执行 `init`、`rebind`、`guard`、`configure`、`reload`、`clock-reset` 或 `serve` 会应用保护规则。
+
+Ubuntu 24.04.5 服务器的真实 SSH、HTTPS、故障恢复及整机重启结果见 [2026-11-26 验收记录](docs/acceptance-ubuntu-20261126.md)。Ubuntu 的服务名自动识别为 `ssh.service/ssh.socket`；SELinux 标签工具仅在需要时使用。
 
 ## 当前能力
 
@@ -21,6 +23,7 @@
 - Go 直连 TLS / Nginx 代理；运行时健康探测、systemd 心跳和定期规则恢复。
 - `rebind` 本地重新绑定并撤销临时授权，不修改永久白名单或主动中断既有 SSH 会话。
 - `reload` / `systemctl reload` 校验后应用策略和证书；失败回滚，重启从最后成功配置恢复。详见 [重载说明](docs/reload.md)。
+- `revoke --ip 地址` 在线撤销指定 IP 的临时授权，持久化后同步防火墙，保留已有 SSH 会话。
 - 持久化时钟最高记录与异常标记，启动等待可信同步，异常后由本地 `clock-reset --revoke-grants` 恢复。
 - 自动安装/卸载与隔离故障验证工具，详见 [运维与验收](docs/operations.md)。
 

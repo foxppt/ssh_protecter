@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,7 +28,7 @@ func TestUnixReloadWaitsForResult(t *testing.T) {
 			return errors.New("candidate rejected")
 		}
 		return nil
-	})
+	}, nil)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -48,5 +49,45 @@ func TestUnixReloadWaitsForResult(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0600 {
 		t.Fatal("unsafe socket permissions")
+	}
+}
+
+func TestUnixRevokeCanonicalAddressAndFailure(t *testing.T) {
+	dir, e := os.MkdirTemp("", "sshrevoke-")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer os.RemoveAll(dir)
+	socket := filepath.Join(dir, "admin.sock")
+	calls := 0
+	close, e := startAdmin(socket, func(context.Context) error { return nil }, func(_ context.Context, ip netip.Addr) error {
+		calls++
+		if ip.String() != "192.0.2.1" {
+			return errors.New("IP was not canonicalized")
+		}
+		if calls == 2 {
+			return errors.New("permanent allowlist conflict")
+		}
+		return nil
+	})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer close()
+	var out bytes.Buffer
+	if e = requestAdmin(socket, "/revoke?ip=%3A%3Affff%3A192.0.2.1", &out); e != nil {
+		t.Fatal(e)
+	}
+	if !strings.Contains(out.String(), "revoked for 192.0.2.1") {
+		t.Fatal("missing completion acknowledgement")
+	}
+	if e = requestAdmin(socket, "/revoke?ip=192.0.2.1", &out); e == nil || !strings.Contains(e.Error(), "permanent allowlist") {
+		t.Fatal("controller failure not propagated")
+	}
+	if e = requestAdmin(socket, "/revoke?ip=invalid", &out); e == nil {
+		t.Fatal("invalid address accepted")
+	}
+	if calls != 2 {
+		t.Fatal("invalid request reached controller")
 	}
 }

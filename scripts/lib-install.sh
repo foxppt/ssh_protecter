@@ -23,11 +23,21 @@ if [[ -n "$root" ]]; then
 else
   [[ $(id -u) = 0 ]] || { echo 'Run as local root, or use --root for offline staging.' >&2; exit 1; }
 fi
+detect_ssh_unit() {
+  local candidate
+  for candidate in sshd.service ssh.service; do
+    if systemctl cat "$candidate" >/dev/null 2>&1; then printf '%s\n' "$candidate"; return 0; fi
+  done
+  echo 'No installed OpenSSH service was found.' >&2; return 1
+}
+ssh_unit=sshd.service
+if [[ -z "$root" ]]; then ssh_unit=$(detect_ssh_unit); fi
+ssh_socket=${ssh_unit%.service}.socket
 paths=(
  /usr/local/sbin/ssh-protecter
  /etc/systemd/system/ssh-protecter-guard.service
  /etc/systemd/system/ssh-protecter.service
- /etc/systemd/system/sshd.service.d/50-ssh-protecter.conf
+ "/etc/systemd/system/$ssh_unit.d/50-ssh-protecter.conf"
 )
 sources=(
  "$binary"
@@ -36,8 +46,8 @@ sources=(
  "$bundle/deploy/systemd/sshd.service.d/ssh-protecter.conf"
 )
 # Only add socket dependencies when socket activation actually exists.
-if [[ -z "$root" ]] && systemctl cat sshd.socket >/dev/null 2>&1; then
-  paths+=(/etc/systemd/system/sshd.socket.d/50-ssh-protecter.conf)
+if [[ -z "$root" ]] && systemctl cat "$ssh_socket" >/dev/null 2>&1; then
+  paths+=("/etc/systemd/system/$ssh_socket.d/50-ssh-protecter.conf")
   sources+=("$bundle/deploy/systemd/sshd.socket.d/ssh-protecter.conf")
 fi
 manifest="$root/var/lib/ssh-protecter/install.manifest"
@@ -50,6 +60,9 @@ check_owned() {
   if [[ -n "$desired" ]] && cmp -s -- "$root$dest" "$desired"; then return 0; fi
   actual=$(sha "$root$dest"); expected=$(recorded_hash "$dest")
   [[ -n "$expected" && "$actual" = "$expected" ]] || { echo "Refusing to overwrite/delete unowned or modified file: $dest" >&2; return 1; }
+}
+restore_labels() {
+  if command -v restorecon >/dev/null 2>&1; then restorecon "$@"; fi
 }
 reject_symlink_parents() {
   local p="$root$1"

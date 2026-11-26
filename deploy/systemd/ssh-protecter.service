@@ -1,8 +1,8 @@
 [Unit]
 Description=SSH TOTP authorization service
 Requires=ssh-protecter-guard.service
-After=ssh-protecter-guard.service network.target chronyd.service
-Wants=chronyd.service
+After=ssh-protecter-guard.service network.target time-sync.target
+Wants=time-sync.target
 StartLimitIntervalSec=0
 
 [Service]

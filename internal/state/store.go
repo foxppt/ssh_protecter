@@ -151,6 +151,14 @@ func (s *Store) RevokeAll(ctx context.Context) error {
 	_, e := s.db.ExecContext(ctx, `DELETE FROM grants`)
 	return e
 }
+func (s *Store) RevokeGrant(ctx context.Context, ip netip.Addr) error {
+	key, e := canonical(ip)
+	if e != nil {
+		return e
+	}
+	_, e = s.db.ExecContext(ctx, `DELETE FROM grants WHERE ip=?`, key)
+	return e
+}
 func canonical(ip netip.Addr) (string, error) {
 	if !ip.IsValid() || ip.Zone() != "" {
 		return "", fmt.Errorf("invalid IP")

@@ -25,7 +25,7 @@ func main() {
 }
 func run(args []string, out, errs io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: ssh-protecter <version|config-check|state-inspect|firewall-plan|guard|init|rebind|serve|reload|configure|clock-reset>")
+		return fmt.Errorf("usage: ssh-protecter <version|config-check|state-inspect|firewall-plan|guard|init|rebind|serve|reload|revoke|configure|clock-reset>")
 	}
 	if args[0] == "version" {
 		if len(args) != 1 {
@@ -39,6 +39,9 @@ func run(args []string, out, errs io.Writer) error {
 	}
 	if args[0] == "reload" {
 		return runReload(args[1:], out, errs)
+	}
+	if args[0] == "revoke" {
+		return runRevoke(args[1:], out, errs)
 	}
 	if args[0] == "init" || args[0] == "rebind" || args[0] == "serve" || args[0] == "configure" || args[0] == "clock-reset" {
 		return runRuntime(args[0], args[1:], out, errs)

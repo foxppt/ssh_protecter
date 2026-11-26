@@ -8,15 +8,18 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"ssh-protecter/internal/config"
 	"time"
 )
 
 // The admin endpoint is local only and protected by a 0700 directory + 0600
 // Unix socket. It never accepts config paths or configuration bodies from peers.
-func startAdmin(path string, reload func(context.Context) error) (func(), error) {
+func startAdmin(path string, reload func(context.Context) error, revoke func(context.Context, netip.Addr) error) (func(), error) {
 	dir := filepath.Dir(path)
 	if e := os.MkdirAll(dir, 0700); e != nil {
 		return nil, e
@@ -63,6 +66,26 @@ func startAdmin(path string, reload func(context.Context) error) (func(), error)
 		}
 		fmt.Fprintln(w, "configuration reloaded")
 	})
+	if revoke != nil {
+		mux.HandleFunc("POST /revoke", func(w http.ResponseWriter, r *http.Request) {
+			if r.ContentLength > 0 || len(r.TransferEncoding) > 0 {
+				http.Error(w, "revoke request must have no body", 400)
+				return
+			}
+			ip, e := config.ParseIP(r.URL.Query().Get("ip"))
+			if e != nil {
+				http.Error(w, e.Error(), 400)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+			defer cancel()
+			if e = revoke(ctx, ip); e != nil {
+				http.Error(w, e.Error(), 400)
+				return
+			}
+			fmt.Fprintf(w, "temporary authorization revoked for %s; established SSH connections retained\n", ip)
+		})
+	}
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 5 * time.Second, MaxHeaderBytes: 4096}
 	go func() { _ = server.Serve(ln) }()
 	return func() { _ = server.Close(); _ = os.Remove(path) }, nil
@@ -84,19 +107,42 @@ func runReload(args []string, out, errs io.Writer) error {
 	return requestReload(*socket, out)
 }
 func requestReload(socket string, out io.Writer) error {
+	return requestAdmin(socket, "/reload", out)
+}
+func runRevoke(args []string, out, errs io.Writer) error {
+	fs := flag.NewFlagSet("revoke", flag.ContinueOnError)
+	fs.SetOutput(errs)
+	socket := fs.String("socket", "/run/ssh-protecter/admin.sock", "local service control socket")
+	value := fs.String("ip", "", "IP whose temporary SSH grant should be revoked")
+	if e := fs.Parse(args); e != nil {
+		return e
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("unexpected positional arguments")
+	}
+	ip, e := config.ParseIP(*value)
+	if e != nil {
+		return e
+	}
+	if runtime.GOOS != "linux" || os.Geteuid() != 0 {
+		return fmt.Errorf("revoke requires local Linux root")
+	}
+	return requestAdmin(*socket, "/revoke?ip="+url.QueryEscape(ip.String()), out)
+}
+func requestAdmin(socket, path string, out io.Writer) error {
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		var d net.Dialer
 		return d.DialContext(ctx, "unix", socket)
 	}, Proxy: nil}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	request, e := http.NewRequest("POST", "http://localhost/reload", nil)
+	request, e := http.NewRequest("POST", "http://localhost"+path, nil)
 	if e != nil {
 		return e
 	}
 	response, e := client.Do(request)
 	if e != nil {
-		return fmt.Errorf("reload request failed; outcome may be unknown: %w", e)
+		return fmt.Errorf("admin request failed; outcome may be unknown: %w", e)
 	}
 	defer response.Body.Close()
 	body, e := io.ReadAll(io.LimitReader(response.Body, 8192))

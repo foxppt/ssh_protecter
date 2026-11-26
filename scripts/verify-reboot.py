@@ -56,12 +56,17 @@ def main():
             elif restored is not None:
                 parser.error(f'expired {kind} restored for {entry["ip"]}')
     guard_ready = int(property_value('ssh-protecter-guard.service', 'ActiveEnterTimestampMonotonic') or 0)
-    try:
-        socket_active = property_value('sshd.socket', 'ActiveState') == 'active'
-    except subprocess.CalledProcessError:
-        socket_active = False  # Standard Rocky installs need not provide a socket unit.
-    ssh_unit = 'sshd.socket' if socket_active else 'sshd.service'
-    ssh_start = int(property_value(ssh_unit, 'ActiveEnterTimestampMonotonic' if socket_active else 'ExecMainStartTimestampMonotonic') or 0)
+    ssh_unit = None
+    for candidate in ('sshd.socket', 'ssh.socket', 'sshd.service', 'ssh.service'):
+        try:
+            if property_value(candidate, 'ActiveState') == 'active':
+                ssh_unit = candidate
+                break
+        except subprocess.CalledProcessError:
+            pass
+    if ssh_unit is None:
+        parser.error('no active OpenSSH service or socket found')
+    ssh_start = int(property_value(ssh_unit, 'ActiveEnterTimestampMonotonic' if ssh_unit.endswith('.socket') else 'ExecMainStartTimestampMonotonic') or 0)
     if not guard_ready or ssh_start < guard_ready:
         parser.error('SSH listener did not start after baseline protection')
     command('/usr/sbin/nft', 'list', 'table', 'inet', 'ssh_protecter')

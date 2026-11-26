@@ -20,4 +20,5 @@ else
  echo 'SKIP: real nftables integration explicitly omitted; this is not full host acceptance.'
 fi
 bash "$bundle/scripts/test-installer.sh" "$bundle/dist/ssh-protecter-linux-amd64"
+bash "$bundle/scripts/test-install-platforms.sh"
 echo 'PASS: isolated fault tests completed; real reboot/SSH/Docker tests remain target-host acceptance.'

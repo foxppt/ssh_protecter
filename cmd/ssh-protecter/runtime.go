@@ -164,7 +164,7 @@ func runRuntime(command string, args []string, out, errs io.Writer) error {
 			fmt.Fprintln(out, "configuration reloaded")
 		}
 		return err
-	})
+	}, controller.Revoke)
 	if e != nil {
 		return e
 	}

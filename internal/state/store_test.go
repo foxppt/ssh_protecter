@@ -150,3 +150,30 @@ func TestReadOnlyInspectionAndCleanup(t *testing.T) {
 		t.Fatal("read-only database accepted write")
 	}
 }
+
+func TestRevokePersistsAfterReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	s := mustOpen(t, path)
+	ctx := context.Background()
+	now := time.Unix(1800000000, 0)
+	ip := netip.MustParseAddr("192.0.2.1")
+	other := netip.MustParseAddr("2001:db8::1")
+	for _, value := range []netip.Addr{ip, other} {
+		if e := s.SaveGrant(ctx, value, "owner", now.Add(time.Minute)); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if e := s.RevokeGrant(ctx, ip); e != nil {
+		t.Fatal(e)
+	}
+	s.Close()
+	s = mustOpen(t, path)
+	defer s.Close()
+	snapshot, e := s.Snapshot(ctx, now)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(snapshot.Grants) != 1 || snapshot.Grants[0].IP != other.String() {
+		t.Fatal("reopened database restored revoked IP or lost another grant")
+	}
+}

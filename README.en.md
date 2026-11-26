@@ -2,7 +2,7 @@
 
 [English](README.en.md) | [简体中文](README.md)
 
-A Go SSH access gate targeting Rocky Linux 10. Authenticate in a browser with a TOTP code to temporarily allow an IP address to establish SSH connections. SSH authentication remains separate and is still required.
+A Go SSH access gate targeting Rocky Linux 10 and Ubuntu 24.04. Authenticate in a browser with a TOTP code to temporarily allow an IP address to establish SSH connections. SSH authentication remains separate and is still required.
 
 **Development release. Final acceptance testing on Rocky Linux 10 is still pending.** Use a test server with an independent console recovery path. Automated tests and cross-compilation do not establish production readiness.
 
@@ -26,6 +26,7 @@ The default grant lasts five minutes. Renewing replaces the deadline with a new 
 - Direct HTTPS or Nginx TLS termination, local health probes, systemd watchdog support, and periodic rule repair.
 - Local authenticator rebinding that revokes temporary grants while retaining permanent allowlist entries and established SSH connections.
 - Validated configuration and certificate reloads, rollback on failure, and restart recovery from the last successfully applied configuration.
+- Online revocation of one IP's temporary grant with `revoke --ip ADDRESS`, preserving established SSH sessions.
 - Persistent clock high-water marks and fault flags, synchronization checks, and explicit local recovery.
 - Installation, uninstallation, isolated fault tests, and reboot-verification tools.
 

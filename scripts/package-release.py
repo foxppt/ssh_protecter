@@ -7,7 +7,7 @@ import tarfile
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output', default='dist/ssh-protecter-0.1.0-rc2-linux-amd64.tar.gz')
+    parser.add_argument('--output', default='dist/ssh-protecter-0.1.0-rc4-linux-amd64.tar.gz')
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     files = [root / name for name in ('README.md', 'CONTEXT.md', 'go.mod', 'go.sum', 'dist/ssh-protecter-linux-amd64')]

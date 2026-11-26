@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib-install.sh"
-# Also recognize a previously installed socket dependency even if activation is now disabled.
-socket_drop=/etc/systemd/system/sshd.socket.d/50-ssh-protecter.conf
-if [[ -f "$root$socket_drop" ]] && [[ " ${paths[*]} " != *" $socket_drop "* ]]; then paths+=("$socket_drop"); fi
+# Recognize both distro names, including dependencies from earlier installations.
+for name in ssh.service sshd.service ssh.socket sshd.socket; do
+  ssh_drop="/etc/systemd/system/$name.d/50-ssh-protecter.conf"
+  if [[ -f "$root$ssh_drop" ]] && [[ " ${paths[*]} " != *" $ssh_drop "* ]]; then paths+=("$ssh_drop"); fi
+done
 for p in "${paths[@]}"; do reject_symlink_parents "$p"; check_owned "$p"; done
 if ((!remove_protection)); then echo 'Uninstall removes SSH gate protection; explicitly pass --remove-protection (or combine with --dry-run).' >&2; exit 2; fi
 echo 'Remove only managed service files and inet ssh_protecter table; preserve all other firewall rules.'
@@ -19,7 +21,9 @@ if [[ -z "$root" ]]; then
 fi
 # Remove sshd dependencies and reload their graph BEFORE stopping guard; otherwise
 # Requires= could propagate the stop to sshd and disconnect existing sessions.
-for p in "${paths[@]}"; do [[ "$p" != */sshd.*.d/* ]] || rm -f -- "$root$p"; done
+for p in "${paths[@]}"; do
+  case "$p" in */ssh.service.d/*|*/sshd.service.d/*|*/ssh.socket.d/*|*/sshd.socket.d/*) rm -f -- "$root$p";; esac
+done
 if [[ -z "$root" ]]; then
   systemctl daemon-reload
   if systemctl cat ssh-protecter-guard.service >/dev/null 2>&1; then systemctl stop ssh-protecter-guard.service; fi
